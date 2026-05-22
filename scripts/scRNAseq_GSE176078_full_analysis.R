@@ -26,7 +26,7 @@ set.seed(1234)
 # -----------------------------
 # 1) Packages
 # -----------------------------
-cran_packages <- c("Seurat", "Matrix", "ggplot2", "patchwork", "dplyr", "harmony", "pheatmap")
+cran_packages <- c("Seurat", "Matrix", "ggplot2", "patchwork", "dplyr", "harmony", "pheatmap", "plyr")
 bioc_packages <- c("clusterProfiler", "org.Hs.eg.db", "enrichplot")
 optional_packages <- c("CellChat", "NMF", "ggalluvial")
 
@@ -80,7 +80,9 @@ save_plot <- function(plot_obj, filename, width = 8, height = 6, dpi = 300) {
 }
 
 find_first_existing <- function(paths) {
-  paths[file.exists(paths)][1]
+  existing_paths <- paths[file.exists(paths)]
+  if (length(existing_paths) == 0) return(NA_character_)
+  existing_paths[1]
 }
 
 # -----------------------------
@@ -143,16 +145,21 @@ meta_cols <- colnames(seurat_obj@meta.data)
 
 if (!"sample" %in% meta_cols) {
   possible_sample_cols <- c("Sample", "sample_id", "Patient", "patient", "orig.ident")
-  found_sample <- intersect(possible_sample_cols, meta_cols)[1]
-  seurat_obj$sample <- seurat_obj@meta.data[[found_sample]]
+  found_sample <- intersect(possible_sample_cols, meta_cols)
+  if (length(found_sample) > 0) {
+    seurat_obj$sample <- seurat_obj@meta.data[[found_sample[1]]]
+  } else {
+    seurat_obj$sample <- seurat_obj$orig.ident
+    warning("No sample column was found. Using orig.ident as sample.")
+  }
 }
 
 if (!de_group_col %in% colnames(seurat_obj@meta.data)) {
   possible_group_cols <- c("subtype", "Subtype", "molecular_subtype", "Molecular_Subtype",
                            "ER_status", "ER.Status", "condition", "group", "diagnosis")
-  found_group <- intersect(possible_group_cols, colnames(seurat_obj@meta.data))[1]
-  if (!is.na(found_group)) {
-    de_group_col <- found_group
+  found_group <- intersect(possible_group_cols, colnames(seurat_obj@meta.data))
+  if (length(found_group) > 0) {
+    de_group_col <- found_group[1]
   }
 }
 
@@ -334,13 +341,18 @@ for (nm in names(marker_list)) {
 
 valid_markers <- marker_list[lengths(marker_list) > 0]
 
+if (length(valid_markers) == 0) {
+  stop("None of the marker genes were found in the dataset. Check gene symbols in the count matrix.")
+}
+
 seurat_obj_filtered <- AddModuleScore(
   seurat_obj_filtered,
   features = valid_markers,
   name = names(valid_markers)
 )
 
-score_cols <- grep(paste0("^", names(valid_markers), collapse = "|"), colnames(seurat_obj_filtered@meta.data), value = TRUE)
+score_pattern <- paste0("^(", paste(names(valid_markers), collapse = "|"), ")[0-9]+$")
+score_cols <- grep(score_pattern, colnames(seurat_obj_filtered@meta.data), value = TRUE)
 
 cluster_scores <- seurat_obj_filtered@meta.data %>%
   mutate(cluster = as.character(seurat_clusters)) %>%
@@ -370,8 +382,10 @@ save_plot(annotated_umap, "11_annotated_UMAP_cell_types.png", width = 9, height 
 feature_markers <- unique(unlist(marker_list))
 feature_markers <- feature_markers[feature_markers %in% rownames(seurat_obj_filtered)]
 
-dot_plot <- DotPlot(seurat_obj_filtered, features = feature_markers, group.by = "cell_type") + RotatedAxis()
-save_plot(dot_plot, "12_cell_type_marker_DotPlot.png", width = 12, height = 6)
+if (length(feature_markers) > 1) {
+  dot_plot <- DotPlot(seurat_obj_filtered, features = feature_markers, group.by = "cell_type") + RotatedAxis()
+  save_plot(dot_plot, "12_cell_type_marker_DotPlot.png", width = 12, height = 6)
+}
 
 saveRDS(seurat_obj_filtered, file.path(rds_dir, "seurat_annotated_all_cells.rds"))
 
@@ -379,49 +393,50 @@ saveRDS(seurat_obj_filtered, file.path(rds_dir, "seurat_annotated_all_cells.rds"
 # 11) Extract fibroblasts / CAFs
 # -----------------------------
 fibroblast_cells <- colnames(seurat_obj_filtered)[seurat_obj_filtered$cell_type == "Fibroblast_CAF"]
+caf_obj <- NULL
 
 if (length(fibroblast_cells) < 50) {
-  warning("Few fibroblast cells were identified by automatic annotation. Check marker expression manually.")
+  warning("Few fibroblast cells were identified by automatic annotation. CAF re-clustering will be skipped. Check marker expression manually.")
+} else {
+  caf_obj <- subset(seurat_obj_filtered, cells = fibroblast_cells)
+  
+  caf_obj <- NormalizeData(caf_obj)
+  caf_obj <- FindVariableFeatures(caf_obj, selection.method = "vst", nfeatures = 2000)
+  caf_obj <- ScaleData(caf_obj, features = VariableFeatures(caf_obj))
+  caf_obj <- RunPCA(caf_obj, features = VariableFeatures(caf_obj), npcs = 30)
+  caf_obj <- RunUMAP(caf_obj, dims = 1:20)
+  caf_obj <- FindNeighbors(caf_obj, dims = 1:20)
+  caf_obj <- FindClusters(caf_obj, resolution = 0.4)
+  
+  fib_umap <- DimPlot(caf_obj, reduction = "umap", label = TRUE)
+  save_plot(fib_umap, "13_fibroblast_CAF_UMAP_clusters.png", width = 8, height = 6)
+  
+  caf_markers <- list(
+    myCAF = c("ACTA2", "TAGLN", "MYL9", "TPM2"),
+    iCAF  = c("IL6", "CXCL12", "CXCL14", "LIF"),
+    apCAF = c("HLA-DRA", "HLA-DRB1", "CD74"),
+    ECM_CAF = c("COL1A1", "COL1A2", "COL3A1", "DCN", "LUM")
+  )
+  
+  caf_markers <- lapply(caf_markers, function(x) x[x %in% rownames(caf_obj)])
+  
+  caf_features <- unique(unlist(caf_markers))
+  if (length(caf_features) > 1) {
+    caf_dot <- DotPlot(caf_obj, features = caf_features) + RotatedAxis()
+    save_plot(caf_dot, "14_CAF_subtype_marker_DotPlot.png", width = 10, height = 5)
+  }
+  
+  caf_cluster_markers <- FindAllMarkers(
+    caf_obj,
+    only.pos = TRUE,
+    min.pct = 0.25,
+    logfc.threshold = 0.25
+  )
+  
+  write.csv(caf_cluster_markers, file.path(marker_dir, "04_CAF_cluster_markers.csv"), row.names = FALSE)
+  
+  saveRDS(caf_obj, file.path(rds_dir, "caf_reclustered_object.rds"))
 }
-
-caf_obj <- subset(seurat_obj_filtered, cells = fibroblast_cells)
-
-caf_obj <- NormalizeData(caf_obj)
-caf_obj <- FindVariableFeatures(caf_obj, selection.method = "vst", nfeatures = 2000)
-caf_obj <- ScaleData(caf_obj, features = VariableFeatures(caf_obj))
-caf_obj <- RunPCA(caf_obj, features = VariableFeatures(caf_obj), npcs = 30)
-caf_obj <- RunUMAP(caf_obj, dims = 1:20)
-caf_obj <- FindNeighbors(caf_obj, dims = 1:20)
-caf_obj <- FindClusters(caf_obj, resolution = 0.4)
-
-fib_umap <- DimPlot(caf_obj, reduction = "umap", label = TRUE)
-save_plot(fib_umap, "13_fibroblast_CAF_UMAP_clusters.png", width = 8, height = 6)
-
-caf_markers <- list(
-  myCAF = c("ACTA2", "TAGLN", "MYL9", "TPM2"),
-  iCAF  = c("IL6", "CXCL12", "CXCL14", "LIF"),
-  apCAF = c("HLA-DRA", "HLA-DRB1", "CD74"),
-  ECM_CAF = c("COL1A1", "COL1A2", "COL3A1", "DCN", "LUM")
-)
-
-caf_markers <- lapply(caf_markers, function(x) x[x %in% rownames(caf_obj)])
-
-caf_features <- unique(unlist(caf_markers))
-if (length(caf_features) > 1) {
-  caf_dot <- DotPlot(caf_obj, features = caf_features) + RotatedAxis()
-  save_plot(caf_dot, "14_CAF_subtype_marker_DotPlot.png", width = 10, height = 5)
-}
-
-caf_cluster_markers <- FindAllMarkers(
-  caf_obj,
-  only.pos = TRUE,
-  min.pct = 0.25,
-  logfc.threshold = 0.25
-)
-
-write.csv(caf_cluster_markers, file.path(marker_dir, "04_CAF_cluster_markers.csv"), row.names = FALSE)
-
-saveRDS(caf_obj, file.path(rds_dir, "caf_reclustered_object.rds"))
 
 # -----------------------------
 # 12) Differential expression: TNBC vs ER+
@@ -443,15 +458,16 @@ if (de_group_col %in% colnames(seurat_obj_filtered@meta.data)) {
       test.use = "wilcox"
     )
     
+    de_fc_col <- if ("avg_log2FC" %in% colnames(de_results)) "avg_log2FC" else "avg_logFC"
     de_results$gene <- rownames(de_results)
     write.csv(de_results, file.path(marker_dir, "05_DE_TNBC_vs_ERpositive_all_cells.csv"), row.names = FALSE)
     
     de_results$minus_log10_padj <- -log10(de_results$p_val_adj + 1e-300)
     de_results$direction <- "Not significant"
-    de_results$direction[de_results$p_val_adj < 0.05 & de_results[[fc_col]] > 0.25] <- paste0("Higher in ", de_group_1)
-    de_results$direction[de_results$p_val_adj < 0.05 & de_results[[fc_col]] < -0.25] <- paste0("Higher in ", de_group_2)
+    de_results$direction[de_results$p_val_adj < 0.05 & de_results[[de_fc_col]] > 0.25] <- paste0("Higher in ", de_group_1)
+    de_results$direction[de_results$p_val_adj < 0.05 & de_results[[de_fc_col]] < -0.25] <- paste0("Higher in ", de_group_2)
     
-    volcano <- ggplot(de_results, aes(x = .data[[fc_col]], y = minus_log10_padj, color = direction)) +
+    volcano <- ggplot(de_results, aes(x = .data[[de_fc_col]], y = minus_log10_padj, color = direction)) +
       geom_point(alpha = 0.75, size = 1.2) +
       geom_vline(xintercept = c(-0.25, 0.25), linetype = "dashed") +
       geom_hline(yintercept = -log10(0.05), linetype = "dashed") +
@@ -465,7 +481,7 @@ if (de_group_col %in% colnames(seurat_obj_filtered@meta.data)) {
     save_plot(volcano, "15_volcano_TNBC_vs_ERpositive.png", width = 8, height = 6)
     
     sig_genes <- de_results %>%
-      filter(p_val_adj < 0.05, abs(.data[[fc_col]]) > 0.25) %>%
+      filter(p_val_adj < 0.05, abs(.data[[de_fc_col]]) > 0.25) %>%
       arrange(p_val_adj)
     
     top_de_genes <- head(sig_genes$gene, 30)
@@ -485,7 +501,7 @@ if (de_group_col %in% colnames(seurat_obj_filtered@meta.data)) {
 }
 
 # Optional DE inside CAFs only
-if (de_group_col %in% colnames(caf_obj@meta.data)) {
+if (inherits(caf_obj, "Seurat") && de_group_col %in% colnames(caf_obj@meta.data)) {
   caf_groups <- unique(as.character(caf_obj@meta.data[[de_group_col]]))
   
   if (all(c(de_group_1, de_group_2) %in% caf_groups)) {
@@ -611,7 +627,7 @@ if (has_cellchat) {
 # -----------------------------
 saveRDS(seurat_obj_filtered, file.path(rds_dir, "final_annotated_seurat_object.rds"))
 
-if (exists("caf_obj")) {
+if (inherits(caf_obj, "Seurat")) {
   saveRDS(caf_obj, file.path(rds_dir, "final_CAF_object.rds"))
 }
 

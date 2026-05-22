@@ -13,6 +13,12 @@ This project investigates **Cancer-Associated Fibroblast (CAF) heterogeneity** i
 
 CAF populations are important components of the tumor microenvironment because they can contribute to extracellular matrix remodeling, inflammatory signaling, immune regulation, and tumor progression.
 
+## Team Members
+
+- **Shaimaa Mohamed El Haddad**
+- **Menatalla Essam**
+- **Esraa Mohamed**
+
 ## Dataset
 
 | Item | Description |
@@ -253,9 +259,4 @@ Raw sequencing data, large expression matrices, generated `.rds` files, and full
 
 ## Project Status
 
-Completed as a bioinformatics course project focused on breast cancer tumor microenvironment analysis using single-cell RNA sequencing.
-
-## Author
-
-**Shaimaa Mohamed El Haddad**  
-Biomedical Science Student | Computational Biology & Genomics Track
+Completed as a team bioinformatics course project focused on breast cancer tumor microenvironment analysis using single-cell RNA sequencing.

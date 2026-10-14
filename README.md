@@ -2,10 +2,14 @@
 
 [![R](https://img.shields.io/badge/R-4.x-blue)](https://www.r-project.org/)
 [![Seurat](https://img.shields.io/badge/Seurat-scRNA--seq-6A5ACD)](https://satijalab.org/seurat/)
-[![Harmony](https://img.shields.io/badge/Harmony-Batch%20Correction-violet)]()
-[![CellChat](https://img.shields.io/badge/CellChat-Cell--Cell%20Communication-teal)]()
-[![Project](https://img.shields.io/badge/Project-Bioinformatics-green)]()
-[![Status](https://img.shields.io/badge/Status-Completed-brightgreen)]()
+![Harmony](https://img.shields.io/badge/Harmony-Batch%20Correction-violet)
+![CellChat](https://img.shields.io/badge/CellChat-Cell--Cell%20Communication-teal)
+![Project](https://img.shields.io/badge/Project-Bioinformatics-green)
+![Status](https://img.shields.io/badge/Status-Academic%20project-blue)
+
+> **Status:** Team academic project with published R analysis code. Historical findings below have not been reproduced against the exact committed script. Raw input data, generated figures, and analysis result objects are not included.
+
+**Start here:** [Analysis script](scripts/scRNAseq_GSE176078_full_analysis.R) · [Package setup](requirements.R) · [Project notes](docs/project_notes.md) · [Run instructions](#how-to-run)
 
 ## Project Summary
 
@@ -79,6 +83,8 @@ Biological interpretation
 
 ## Methods
 
+The method descriptions include the original team analysis. See the implementation notes below for differences in the published script.
+
 ### 1. Quality Control and Filtering
 
 Quality control was performed to remove low-quality cells and possible technical noise.
@@ -87,7 +93,7 @@ QC metrics included:
 
 - `nFeature_RNA`
 - `nCount_RNA`
-- `percent.mito`
+- `percent.mt`
 
 Filtering criteria:
 
@@ -149,19 +155,19 @@ DotPlot and FeaturePlot visualizations were used to validate CAF subtype marker 
 
 ### 7. Cell-Cell Communication Analysis Using CellChat
 
-Cell-cell communication analysis was performed using **CellChat** to investigate signaling interactions between CAF subtypes.
+The committed script optionally runs CellChat on **all annotated cell types**, grouped by `cell_type`. It saves interaction networks, a ligand–receptor table, and a CellChat object. It skips this block when CellChat is unavailable.
 
-The analysis included:
+The original team project also described communication between CAF subtypes. That specific subtype-level analysis is not implemented by the current all-cell-type block.
 
-- Creating a CellChat object from the CAF dataset
-- Loading the human CellChat ligand-receptor database
-- Detecting overexpressed communication genes
-- Identifying overexpressed ligand-receptor interactions
-- Computing communication probabilities
-- Aggregating signaling networks
-- Interpreting pathway-level communication patterns
+### Implementation Notes
 
-## Key Results
+- Major cell-type labels in the script are assigned by marker-module scores across six broad categories; they are provisional and need manual biological review.
+- The CAF block re-clusters fibroblasts and plots marker sets for myCAF, iCAF, apCAF, and ECM_CAF. It does not automatically assign the five historical CAF subtype labels listed above.
+- TNBC vs ER+ differential expression requires matching cell metadata and both group labels. GO/KEGG enrichment and CellChat outputs depend on available packages and analysis results.
+
+## Historical Team-Reported Results
+
+These findings are retained from the original project description. They are **not verified outputs of a fresh run of the committed workflow**; the repository does not currently include result tables or figures supporting each claim.
 
 - The project identified major cell populations within the breast cancer tumor microenvironment.
 - The initial dataset contained **100,064 cells**, and **81,820 cells** were retained after quality control.
@@ -259,7 +265,7 @@ Raw sequencing data, large expression matrices, generated `.rds` files, and full
 
 ## Project Status
 
-Completed as a team bioinformatics course project focused on breast cancer tumor microenvironment analysis using single-cell RNA sequencing.
+Completed as a team bioinformatics course project. The public code is available for review; reproducing the reported results remains a separate validation step. No automated test suite or end-to-end execution was verified during this documentation review.
 
 ## Reproducibility Note
 

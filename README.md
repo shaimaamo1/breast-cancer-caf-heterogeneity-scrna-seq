@@ -91,11 +91,11 @@ QC metrics included:
 
 Filtering criteria:
 
-- `nFeature_RNA > 300`
-- `nFeature_RNA < 6000`
-- `percent.mito < 10%`
+- `nFeature_RNA >= 300`
+- `nFeature_RNA <= 6000`
+- `percent.mt <= 20%`
 
-After filtering, **81,820 cells** were retained from the original **100,064 cells**.
+The original project report documented **81,820 retained cells** from **100,064 input cells**. This reported result should be rechecked after rerunning the currently committed script; it is not guaranteed by the thresholds above.
 
 ### 2. Normalization, PCA, Harmony, UMAP, and Clustering
 
@@ -260,3 +260,7 @@ Raw sequencing data, large expression matrices, generated `.rds` files, and full
 ## Project Status
 
 Completed as a team bioinformatics course project focused on breast cancer tumor microenvironment analysis using single-cell RNA sequencing.
+
+## Reproducibility Note
+
+The repository's current R script is the source of truth for executable QC settings. It filters cells using `nFeature_RNA >= 300`, `nFeature_RNA <= 6000`, and `percent.mt <= 20`. Previously reported cell counts and biological interpretations were produced during the team project and have not been independently reproduced against this exact checked-in script and a newly downloaded dataset. Re-run the workflow with the matching GSE176078 data and metadata before treating those figures as verified outputs.
